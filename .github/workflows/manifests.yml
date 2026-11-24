@@ -1,0 +1,65 @@
+name: Manifests
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: kubeconform version, without a leading v
+        type: string
+        required: false
+        default: "0.8.0"
+      checksum:
+        description: sha256 of kubeconform-linux-amd64.tar.gz
+        type: string
+        required: false
+        default: "9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883"
+      kubernetes_version:
+        description: Kubernetes version whose schema the manifests must match
+        type: string
+        required: false
+        default: "1.37.2"
+      manifests:
+        description: Manifest file or directory
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  kubeconform:
+    name: kubeconform
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install kubeconform
+        env:
+          VERSION: ${{ inputs.version }}
+          SHA256: ${{ inputs.checksum }}
+        run: |
+          set -euo pipefail
+          archive="kubeconform-linux-amd64.tar.gz"
+          curl -sSfL -o "${archive}" \
+            "https://github.com/yannh/kubeconform/releases/download/v${VERSION}/${archive}"
+          echo "${SHA256}  ${archive}" | sha256sum -c -
+          tar -xzf "${archive}" kubeconform
+          mkdir -p "${HOME}/.local/bin"
+          install -m 0755 kubeconform "${HOME}/.local/bin/kubeconform"
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Lint manifests
+        env:
+          KUBERNETES_VERSION: ${{ inputs.kubernetes_version }}
+          MANIFESTS: ${{ inputs.manifests }}
+        run: |
+          set -euo pipefail
+          kubeconform \
+            -strict \
+            -summary \
+            -kubernetes-version "${KUBERNETES_VERSION}" \
+            "${MANIFESTS}"

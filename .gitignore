@@ -1,0 +1,12 @@
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# tool caches and local scan output
+.trivy-cache/
+.cache/
+*.sarif
+
+# local build of the sample
+/sample/app

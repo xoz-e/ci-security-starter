@@ -1,0 +1,127 @@
+name: Trivy
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Trivy version, without a leading v
+        type: string
+        required: false
+        default: "0.76.2"
+      checksum:
+        description: sha256 of trivy_<version>_Linux-64bit.tar.gz
+        type: string
+        required: false
+        default: "bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf"
+      severity:
+        description: Severities that fail the job
+        type: string
+        required: false
+        default: "HIGH,CRITICAL"
+      ignore_unfixed:
+        description: Do not fail the job on vulnerabilities that have no fix yet
+        type: boolean
+        required: false
+        default: true
+      dockerfile:
+        description: Dockerfile to build and scan. Empty skips the image job.
+        type: string
+        required: false
+        default: ""
+      context:
+        description: Docker build context
+        type: string
+        required: false
+        default: "."
+      image:
+        description: Local image name to build and scan
+        type: string
+        required: false
+        default: "scan:ci"
+
+permissions:
+  contents: read
+
+jobs:
+  filesystem:
+    name: filesystem
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Trivy
+        env:
+          VERSION: ${{ inputs.version }}
+          SHA256: ${{ inputs.checksum }}
+        run: |
+          set -euo pipefail
+          archive="trivy_${VERSION}_Linux-64bit.tar.gz"
+          curl -sSfL -o "${archive}" \
+            "https://github.com/aquasecurity/trivy/releases/download/v${VERSION}/${archive}"
+          echo "${SHA256}  ${archive}" | sha256sum -c -
+          tar -xzf "${archive}" trivy
+          mkdir -p "${HOME}/.local/bin"
+          install -m 0755 trivy "${HOME}/.local/bin/trivy"
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Scan filesystem
+        env:
+          SEVERITY: ${{ inputs.severity }}
+          IGNORE_UNFIXED: ${{ inputs.ignore_unfixed }}
+        run: |
+          set -euo pipefail
+          args=(--exit-code 1 --severity "${SEVERITY}" --scanners vuln --no-progress)
+          if [ "${IGNORE_UNFIXED}" = "true" ]; then
+            args+=(--ignore-unfixed)
+          fi
+          trivy fs "${args[@]}" .
+
+  image:
+    name: image
+    if: inputs.dockerfile != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build image
+        env:
+          IMAGE: ${{ inputs.image }}
+          DOCKERFILE: ${{ inputs.dockerfile }}
+          CONTEXT: ${{ inputs.context }}
+        run: docker build -t "${IMAGE}" -f "${DOCKERFILE}" "${CONTEXT}"
+
+      - name: Install Trivy
+        env:
+          VERSION: ${{ inputs.version }}
+          SHA256: ${{ inputs.checksum }}
+        run: |
+          set -euo pipefail
+          archive="trivy_${VERSION}_Linux-64bit.tar.gz"
+          curl -sSfL -o "${archive}" \
+            "https://github.com/aquasecurity/trivy/releases/download/v${VERSION}/${archive}"
+          echo "${SHA256}  ${archive}" | sha256sum -c -
+          tar -xzf "${archive}" trivy
+          mkdir -p "${HOME}/.local/bin"
+          install -m 0755 trivy "${HOME}/.local/bin/trivy"
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Scan image
+        env:
+          IMAGE: ${{ inputs.image }}
+          SEVERITY: ${{ inputs.severity }}
+          IGNORE_UNFIXED: ${{ inputs.ignore_unfixed }}
+        run: |
+          set -euo pipefail
+          args=(--exit-code 1 --severity "${SEVERITY}" --scanners vuln --no-progress)
+          if [ "${IGNORE_UNFIXED}" = "true" ]; then
+            args+=(--ignore-unfixed)
+          fi
+          trivy image "${args[@]}" "${IMAGE}"
