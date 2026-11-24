@@ -1,0 +1,7 @@
+# Convenience only. The pull request job is the check that can block a merge.
+# See README, "Pre-commit".
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks

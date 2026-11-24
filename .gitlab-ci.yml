@@ -1,0 +1,9 @@
+# Caller for this repository. Other projects include gitlab/security.gitlab-ci.yml directly.
+include:
+  - local: /gitlab/security.gitlab-ci.yml
+    inputs:
+      dockerfile: sample/Dockerfile
+      image_context: sample
+      image_name: ci-security-starter-sample:ci
+      manifests: sample/k8s
+      kubernetes_version: "1.37.2"
